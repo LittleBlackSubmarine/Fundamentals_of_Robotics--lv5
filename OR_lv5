@@ -1,0 +1,368 @@
+------------------------------------------------------------------------------ 
+-- Following few lines automatically added by V-REP to guarantee compatibility 
+-- with V-REP 3.1.3 and later: 
+if (sim_call_type==sim_childscriptcall_initialization) then 
+  simSetScriptAttribute(sim_handle_self,sim_childscriptattribute_automaticcascadingcalls,false) 
+end 
+if (sim_call_type==sim_childscriptcall_cleanup) then 
+ 
+end 
+if (sim_call_type==sim_childscriptcall_sensing) then 
+  simHandleChildScripts(sim_call_type) 
+end 
+if (sim_call_type==sim_childscriptcall_actuation) then 
+  if not firstTimeHere93846738 then 
+      firstTimeHere93846738=0 
+  end 
+  simSetScriptAttribute(sim_handle_self,sim_scriptattribute_executioncount,firstTimeHere93846738) 
+  firstTimeHere93846738=firstTimeHere93846738+1 
+
+------------------------------------------------------------------------------ 
+ 
+ 
+if (simGetScriptExecutionCount()==0) then
+        v=simGetInt32Parameter(sim_intparam_program_version)
+        if (v<20412) then
+            simDisplayDialog('Warning','The YouBot model is only fully supported from V-REP version 2.4.12 and above.&&nThis simulation will not run as expected!',sim_dlgstyle_ok,false,'',nil,{0.8,0,0,0,0,0})
+        end
+    
+        --Priprema inicijalnih vrijednosti i dohvacanje podataka:
+        wheelJoints={-1,-1,-1,-1} 
+        wheelJoints[1]=simGetObjectHandle('rollingJoint_fl')
+        wheelJoints[2]=simGetObjectHandle('rollingJoint_rl')
+        wheelJoints[3]=simGetObjectHandle('rollingJoint_rr')
+        wheelJoints[4]=simGetObjectHandle('rollingJoint_fr')
+        youBot=simGetObjectHandle('youBot')
+        youBotRef=simGetObjectHandle('youBot_ref')
+        tip=simGetObjectHandle('youBot_positionTip')
+        target=simGetObjectHandle('youBot_positionTarget')
+        camera=simGetObjectHandle("kamera")
+        armJoints={-1,-1,-1,-1,-1}
+    
+        for i=0,4,1 do
+            armJoints[i+1]=simGetObjectHandle('youBotArmJoint'..i)
+        end
+    
+        ik1=simGetIkGroupHandle('youBotUndamped_group')
+        ik2=simGetIkGroupHandle('youBotDamped_group')
+        ikFailedReportHandle=-1
+        forwBackVelRange={-240*math.pi/180,240*math.pi/180}  -- min and max wheel rotation vel. for backward/forward movement
+        leftRightVelRange={-240*math.pi/180,240*math.pi/180} -- min and max wheel rotation vel. for left/right movement
+        rotVelRange={-240*math.pi/180,240*math.pi/180}       -- min and max wheel rotation vel. for left/right rotation movement
+        forwBackVel=0
+        leftRightVel=0
+        rotVel=0
+        initSizeFactor=simGetObjectSizeFactor(youBot) -- only needed if we scale the robot up/down
+    
+        -- zeljene pozicije robotske ruke  
+        desiredJ={0,30.91*math.pi/180,52.42*math.pi/180,72.68*math.pi/180,0} -- kada je u FK modu
+    
+        for i=1,5,1 do
+            simSetJointPosition(armJoints[i],desiredJ[i])
+        end
+    
+        desiredPos={0,0,0} -- kada je u IK modu
+        currentPos={0,0,0} -- kada je u IK modu
+        ikMinPos={-0.5*initSizeFactor,-0.2*initSizeFactor,-0.3*initSizeFactor}
+        ikRange={1*initSizeFactor,1*initSizeFactor,0.9*initSizeFactor}
+    
+        -- racunamo pocetnu poziciju i orijentaciju vrha u odnosu na robota baze (jer se baza se krece)
+        initialTipPosRelative=simGetObjectPosition(tip,youBotRef)--youBot)
+        ikMode=false -- pocinjemo u FK modu
+        maxJointVelocity=40*math.pi/180 
+        maxPosVelocity=0.1*initSizeFactor
+        previousS=initSizeFactor
+    
+        gripperCommunicationTube=simTubeOpen(0,'youBotGripperState'..simGetNameSuffix(nil),1)    
+    
+        bGripper=false;
+    
+        -- ovdje dodajte vasu inicijalizaciju
+        
+		f = 64/(math.tan(20*math.pi/180))
+		uc = 128
+		vc = 128
+		state = 0
+        counter = 1
+        -- kraj inicijalizacije 
+    end
+    
+    -- sekvencijalno upravljanje --
+	
+	
+	    result,t0,t1=simReadVisionSensor(camera)
+            blobCount=t1[1]
+            if(blobCount>0)then
+			xpos=t1[5]
+			ypos=t1[6]
+			kw=t1[7]
+			kh=t1[8]
+			sirina=kw*128
+			visina=kh*128
+			u=uc*xpos
+			v=vc*(1-(ypos-kh/2))
+			z=((f*0.03)/(v-64))
+			z1=z+0.3+0.03
+		end
+
+		if (state==0) then
+			if (blobCount==0) then
+				rotVel=-1.5
+		    else
+				rotVel=-0.7
+				if (math.abs(t1[5]-0.50) < 0.0005)then
+					state=1
+					rotVel=0.0
+				end
+			end
+		end
+
+		if (state == 1) then
+			if z1>0.48 then
+				forwBackVel=3
+			else
+				state=2
+				forwBackVel=0
+			end
+		end
+    
+		if (state == 2) then
+			if (t1[5]<0.495) then
+				rotVel=-0.3
+			else
+				if (t1[5]>0.505) then
+					rotVel=0.3
+				end
+					if (t1[5]==0.5)then
+						state=3
+						rotVel=0.0
+					end
+				end
+	    end	
+
+		if (state == 3) then	
+		desiredJ={0,-30.91*math.pi/180,-52.42*math.pi/180,-72.68*math.pi/180,-90*math.pi/180}
+			aFinished=true
+				for i=1,5,1 do
+					if (math.abs(desiredJ[i]-currentJ[i])>0.002) then
+						aFinished=false
+					end
+				end
+					if aFinished then
+						state=4
+					end
+		end
+
+		if (state == 4) then
+			desiredPos = {z1, 0, 0.040}
+			ikMode=true
+			cFinished=true
+				for i=1,3,1 do
+					if (math.abs(desiredPos[i]-currentPos[i])>0.02) then
+						cFinished=false
+					end
+				end
+					if cFinished then
+						state=5
+					StartStateTime = simGetSystemTimeInMilliseconds()
+					end
+		end
+
+		if (state == 5) then
+			bGripper=true;
+			OpenGripper=0;
+			time = simGetSystemTimeInMilliseconds()
+			if(time - StartStateTime > 3000) then
+				state=6
+			end
+		end
+
+		if (state == 6) then
+		desiredPos = {0.5, 0, 0.4}
+			ikMode=true
+			dFinished=true
+				for i=1,3,1 do
+					if (math.abs(desiredPos[i]-currentPos[i])>0.02) then
+						dFinished=false
+					end
+				end
+					if dFinished then
+						ikMode=false
+							state=7
+					end
+		end
+
+		if (state == 7) then
+			if (counter==1) then
+			desiredJ={20*math.pi/180,30*math.pi/180,52*math.pi/180,72*math.pi/180,-90*math.pi/180}
+			eFinished=true
+				for i=1,5,1 do
+					if (math.abs(desiredJ[i]-currentJ[i])>0.002) then
+						eFinished=false
+					end
+				end
+					if eFinished then
+						state=8
+					end
+			end
+            
+            if (counter==2) then
+            desiredJ={0*math.pi/180,30*math.pi/180,52*math.pi/180,72*math.pi/180,-90*math.pi/180}
+            eFinished=true
+            for i=1,5,1 do
+                if (math.abs(desiredJ[i]-currentJ[i])>0.002) then
+                    eFinished=false
+                end
+            end
+            if eFinished then
+                state=8
+            end
+        end
+
+            if (counter==3) then
+            desiredJ={-20*math.pi/180,30*math.pi/180,52*math.pi/180,72*math.pi/180,-90*math.pi/180}
+            eFinished=true
+            for i=1,5,1 do
+                if (math.abs(desiredJ[i]-currentJ[i])>0.002) then
+                    eFinished=false
+                end
+            end
+            if eFinished then
+                state=8
+            end
+        end
+
+        end
+
+
+		if (state == 8) then
+			bGripper=true;
+			OpenGripper=1;
+			time = simGetSystemTimeInMilliseconds()
+			if(time - StartStateTime > 7000) then
+				bGripper=false;
+				if (counter<3) then
+					state=0
+					counter=counter+1
+				else
+					state=9
+				end
+			end
+		end
+    
+    -- kraj sekvencijalnog upravljanja --
+    
+    -- upravljanje hvataljkom --
+    
+    if bGripper then
+        simTubeWrite(gripperCommunicationTube,simPackInts({OpenGripper}))
+    end
+        
+    -- upravljanje rukom --
+    
+    --simAddStatusbarMessage(string.format("state=%f", state))
+    
+    simHandleChildScripts(sim_call_type) -- Important to handle all child scripts built on this hierarchy!
+    
+    -- s will scale a few values hereafter (has only an effect if the robot is scaled down/up)
+    s=simGetObjectSizeFactor(youBot) 
+    if (s~=previousS) then
+        f=s/previousS
+        for i=1,3,1 do
+            desiredPos[i]=desiredPos[i]*f
+            currentPos[i]=currentPos[i]*f
+            ikMinPos[i]=ikMinPos[i]*f
+            ikRange[i]=ikRange[i]*f
+            initialTipPosRelative[i]=initialTipPosRelative[i]*f
+        end
+        maxPosVelocity=maxPosVelocity*f
+        previousS=s
+    end
+    
+    targetPos = simGetObjectPosition(target,youBotRef)
+    TipPos=simGetObjectPosition(tip,youBotRef)
+    if ikMode then
+        bIK = 1
+    else
+        bIK = 0
+    end
+    
+    simAddStatusbarMessage(string.format("Target=(%f %f %f)  Tip=(%f %f %f) bIK=%d", targetPos[1], targetPos[2], targetPos[3], TipPos[1], TipPos[2], TipPos[3], bIK))
+    if ikMode then
+        desiredPos1 = {z1, 0, 0.1}
+        -- We are in IK mode
+        maxVariationAllowed=maxPosVelocity*simGetSimulationTimeStep()
+        deltaX={0,0,0}
+        -- position:
+        for i=1,3,1 do
+            delta=desiredPos[i]-currentPos[i]
+            if (math.abs(delta)>maxVariationAllowed) then
+                delta=maxVariationAllowed*delta/math.abs(delta) -- we limit the variation to the maximum allowed
+            end
+            deltaX[i]=delta
+        end
+    
+        currentPos={currentPos[1]+deltaX[1],currentPos[2]+deltaX[2],currentPos[3]+deltaX[3]}
+        simSetObjectPosition(target,youBotRef,currentPos)--youBot,pos)
+        simSetObjectOrientation(target, youBotRef, {0, 0, 0.5*math.pi})
+    
+        if (simHandleIkGroup(ik1)==sim_ikresult_fail) then
+            -- the position could not be reached.
+            simHandleIkGroup(ik2) -- Apply a damped resolution method
+            if (ikFailedReportHandle==-1) then -- We display a IK failure (in pos) report message
+                ikFailedReportHandle=simDisplayDialog("IK failure report","IK solver failed.",sim_dlgstyle_message,false,"",nil,{1,0.7,0,0,0,0})
+            end
+        else
+            if (ikFailedReportHandle>=0) then
+                simEndDialog(ikFailedReportHandle) -- We close any report message about IK failure in orientaion
+                ikFailedReportHandle=-1
+            end
+        end
+        -- Now update the desiredJ in case we switch back to FK mode:
+        for i=1,5,1 do
+            desiredJ[i]=simGetJointPosition(armJoints[i])
+        end
+        
+    else
+        -- We are in FK mode
+        currentJ={0,0,0,0,0}
+        for i=1,5,1 do
+            currentJ[i]=simGetJointPosition(armJoints[i])
+        end
+        maxVariationAllowed=maxJointVelocity*simGetSimulationTimeStep()
+        for i=1,5,1 do
+            delta=desiredJ[i]-currentJ[i]
+            if (math.abs(delta)>maxVariationAllowed) then
+                delta=maxVariationAllowed*delta/math.abs(delta) -- we limit the variation to the maximum allowed
+            end
+            simSetJointPosition(armJoints[i],currentJ[i]+delta)
+        end
+        -- Now make sure that everything is ok if we switch to IK mode:
+        simSetObjectPosition(target,-1,simGetObjectPosition(tip,-1))
+        tipPosRel=simGetObjectPosition(tip,youBotRef)--youBot)
+        --desiredPos={tipPosRel[1]-initialTipPosRelative[1],tipPosRel[2]-initialTipPosRelative[2],tipPosRel[3]-initialTipPosRelative[3]}
+        desiredPos=tipPosRel
+        for i=1,3,1 do 
+            currentPos[i]=desiredPos[i]
+        end
+        -- Close any IK warning dialogs:
+        if (ikFailedReportHandle>=0) then
+            simEndDialog(ikFailedReportHandle) -- We close any report message about IK failure
+            ikFailedReportHandle=-1
+        end
+    end
+    
+    -- upravljanje mobilnom platformom --
+    
+    simSetJointTargetVelocity(wheelJoints[1],-forwBackVel-leftRightVel-rotVel)
+    simSetJointTargetVelocity(wheelJoints[2],-forwBackVel+leftRightVel-rotVel)
+    simSetJointTargetVelocity(wheelJoints[3],-forwBackVel-leftRightVel+rotVel)
+    simSetJointTargetVelocity(wheelJoints[4],-forwBackVel+leftRightVel+rotVel)
+    
+ 
+ 
+------------------------------------------------------------------------------ 
+-- Following few lines automatically added by V-REP to guarantee compatibility 
+-- with V-REP 3.1.3 and later: 
+end 
+------------------------------------------------------------------------------ 
